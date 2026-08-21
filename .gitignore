@@ -1,1 +1,25 @@
 .direnv/
+.env
+
+# GHC build artifacts
+.build/
+*.hi
+*.dyn_hi
+*.o
+*.dyn_o
+*.p_o
+*.hie
+.ghc.environment.*
+
+# cabal (念のため)
+dist-newstyle/
+.cabal-sandbox/
+cabal.sandbox.config
+
+# nix
+result
+result-*
+
+# tags
+tags
+TAGS
