@@ -23,6 +23,7 @@
             (hpkgs.ghcWithPackages (p: [
               p.hoogle
               p.transformers
+              p.vector
               p.bytestring
               p.megaparsec
             ]))
