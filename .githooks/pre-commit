@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+# コミット前に整形と警告を検査する。CI を置かない代わりの門番 (issue #2)。
+# 有効化: make hooks  (git config core.hooksPath .githooks)
+set -eu
+
+# direnv 経由で dev shell に入っていない環境 (エディタの GUI から commit した等)
+# でも動くように、ツールが見つからなければ nix develop に入り直す。
+if ! command -v fourmolu >/dev/null 2>&1 || ! command -v ghci >/dev/null 2>&1; then
+  if command -v nix >/dev/null 2>&1; then
+    exec nix develop --command "$0" "$@"
+  fi
+  echo "pre-commit: fourmolu/ghci が無く nix も見つからないため検査を飛ばします" >&2
+  exit 0
+fi
+
+# 作業ツリーではなく「ステージされた内容」を検査する。
+# git stash を使うと失敗時に作業内容を失う危険があるので、
+# index を一時ディレクトリに展開してそこで検査する。
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+git checkout-index --all --prefix="$tmp/"
+
+cd "$tmp"
+
+echo "pre-commit: make fmt-check"
+if ! make fmt-check; then
+  echo "" >&2
+  echo "pre-commit: 整形されていません。'make fmt' を実行してから commit してください。" >&2
+  exit 1
+fi
+
+echo "pre-commit: make check"
+if ! make check; then
+  echo "" >&2
+  echo "pre-commit: 警告が残っています。直すか、意図的なら --no-verify で回避できます。" >&2
+  exit 1
+fi
+
+echo "pre-commit: ok"
