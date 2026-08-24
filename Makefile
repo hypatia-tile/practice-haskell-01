@@ -1,6 +1,7 @@
 GHC       ?= ghc
 GHCI      ?= ghci
 MAIN      ?= Main.hs
+FILE      ?= $(MAIN)
 BUILD     ?= .build
 TARGET    := $(BUILD)/main
 
@@ -8,9 +9,11 @@ TARGET    := $(BUILD)/main
 WARNFLAGS ?= -Wall -Wcompat -Wincomplete-record-updates -Wredundant-constraints
 GHCFLAGS  ?= $(WARNFLAGS)
 
-SOURCES := $(wildcard *.hs)
+SOURCES  := $(wildcard *.hs)
+SCRATCH  := $(wildcard Prac_*.hs)
+TESTBINS := $(SCRATCH:%.hs=$(BUILD)/test-%)
 
-.PHONY: all build check run repl fmt fmt-check tags hoogle hooks clean
+.PHONY: all build check test run repl fmt fmt-check tags hoogle hooks clean
 
 all: build
 
@@ -18,23 +21,29 @@ build: $(TARGET)
 
 $(TARGET): $(SOURCES)
 	@mkdir -p $(BUILD)
-	$(GHC) $(GHCFLAGS) -outputdir $(BUILD) -o $@ $(MAIN)
+	$(GHC) $(GHCFLAGS) -outputdir $(BUILD)/obj-main -o $@ $(MAIN)
 
-# 全ソースを警告込みで型検査する。ghc ではなく ghci を使うのは、
-# main を持たないスクラッチファイルを ghc に渡すと
-# 「The IO action 'main' is not defined」で落ちるため (issue #5)。
-# ghci は main を要求しないので、-Werror と組み合わせれば警告の門番になる。
+# 全ソースを警告込みで型検査する。各ファイルに module ヘッダを付けたので、
+# main を持たないファイルも ghc にそのまま渡せる (docs/adr/0002)。
 check:
-	@for f in $(SOURCES); do \
-		printf '  typecheck %s\n' "$$f"; \
-		$(GHCI) $(WARNFLAGS) -Werror -v0 -e 'return ()' "$$f" || exit 1; \
-	done
+	$(GHC) -fno-code $(WARNFLAGS) -Werror -outputdir $(BUILD)/check $(SOURCES)
+
+# 各 Prac_*.hs が自分の main で自分のテストを走らせる。
+# -main-is で Main 以外の名前のモジュールを実行可能にしている。
+# ファイルを置けば拾われるので、テスト一覧への登録作業は要らない。
+test: $(TESTBINS)
+	@for b in $(TESTBINS); do printf '== %s\n' "$$b"; ./"$$b" || exit 1; done
+
+$(BUILD)/test-%: %.hs $(wildcard TestKit.hs)
+	@mkdir -p $(BUILD)
+	$(GHC) $(GHCFLAGS) -main-is $* -outputdir $(BUILD)/obj-$* -o $@ $<
 
 run: build
 	./$(TARGET)
 
+# make repl FILE=Prac_01_ByteString.hs のように対象を指定できる。
 repl:
-	$(GHCI) $(MAIN)
+	$(GHCI) $(FILE)
 
 fmt:
 	fourmolu -i $(SOURCES)

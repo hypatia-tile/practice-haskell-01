@@ -2,9 +2,12 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+module Prac_01_ByteString where
+
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Word8
+import TestKit (runCases, runTests)
 
 -- | 入力中の一区画。ByteString を切り出さず、位置と長さだけを持つ。
 data Span = Span
@@ -79,7 +82,12 @@ untilMatch p = go
         | p c -> pure True
         | otherwise -> skip >> go
 
--- | セミコロン区切りで区画に分ける。区切りが n 個なら区画は n+1 個。
+{- | セミコロン区切りで区画に分ける。
+
+契約: 区切りが n 個なら区画は必ず n+1 個。したがって空入力は長さ0の区画1つ
+(@"" -> [Span 0 0]@) になる。Data.List.Split.splitOn と同じ流儀で、
+BS.split ';' "" == [] とは異なる。
+-}
 scan :: Parser [Span]
 scan = do
   hitSep <- untilMatch (== _semicolon)
@@ -91,5 +99,33 @@ scan = do
 runScanner :: ByteString -> [Span]
 runScanner = fst . runParser scan . initCursor
 
-test :: IO ()
-test = print (runScanner "hello;wo;rld;")
+{- | Span で元の入力を切り出し、区切りで繋ぎ直す。
+これが元に戻ることが、位置と長さの計算が正しいことの必要条件。
+表に期待値を書き下すテストと違い、入力を増やしてもタダで効く。
+-}
+restore :: ByteString -> ByteString
+restore src = BS.intercalate (BS.singleton _semicolon) (map slice (runScanner src))
+ where
+  slice sp = BS.take (len sp) (BS.drop (start sp) src)
+
+-- テスト ----------------------------------------------------------------
+
+cases :: [(ByteString, [Span])]
+cases =
+  [ ("", [Span 0 0])
+  , ("a", [Span 0 1])
+  , ("a;", [Span 0 1, Span 2 0])
+  , (";", [Span 0 0, Span 1 0])
+  , (";a", [Span 0 0, Span 1 1])
+  , ("a;;b", [Span 0 1, Span 2 0, Span 3 1])
+  , ("a;b;", [Span 0 1, Span 2 1, Span 4 0])
+  , ("hello;wo;rld", [Span 0 5, Span 6 2, Span 9 3])
+  , ("hello;wo;rld;", [Span 0 5, Span 6 2, Span 9 3, Span 13 0])
+  ]
+
+main :: IO ()
+main =
+  runTests
+    [ runCases "runScanner" runScanner cases
+    , runCases "restore" restore [(src, src) | (src, _) <- cases]
+    ]

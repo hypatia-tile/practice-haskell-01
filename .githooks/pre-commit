@@ -36,4 +36,11 @@ if ! make check; then
   exit 1
 fi
 
+echo "pre-commit: make test"
+if ! make test; then
+  echo "" >&2
+  echo "pre-commit: テストが落ちています。意図的なら --no-verify で回避できます。" >&2
+  exit 1
+fi
+
 echo "pre-commit: ok"
