@@ -55,6 +55,18 @@ Cabal がやってくれていたことを自前で持つ必要がある。こ�
   どれか1つ触れば ghc を呼び直す。実際にどのモジュールを再コンパイルするかの判断は
   ghc の recompilation checker に任せている。ファイル数が増えても破綻はしないが、
   サブディレクトリを掘るなら `-i` の追加が必要になる。
+- **エディタの診断 (`hie.yaml`)**: HLS は hie-bios 経由で GHC 引数を決めるが、
+  その供給源は通常 Cabal project である。`*.cabal` が無いと引数なしの暗黙 cradle に
+  フォールバックし、`-Wall` 系の警告がエディタ上から**丸ごと消える**
+  (実測: `hie.yaml` 無しで診断0件、有りで `ghc -Wall` と一致)。
+  型エラーは出るので気付きにくい。`hie.yaml` の `direct` cradle で引数を明示している。
+  Makefile の `GHCFLAGS` と二重管理になるので、片方を変えたら両方直すこと。
+- **宣言していないパッケージが import できてしまう**: `ghcWithPackages` は指定した
+  パッケージの**推移閉包**をパッケージ DB に入れ、GHC はそれらを既定で expose する。
+  そのため flake.nix に書いていないパッケージも import が通ってしまう
+  (実例: `Data.Word8` は `word8` パッケージのもので、当初は `hoogle` / `megaparsec` の
+  依存として紛れ込んでいるものを拾っていた)。無関係なパッケージを外した瞬間に
+  理由不明で壊れるので、使うパッケージは必ず flake.nix に明示すること。
 - **パッケージのバージョン指定ができない**: 使えるのは nixpkgs の `haskellPackages` が
   持っているバージョンだけ。特定バージョンを狙うなら overlay を書くことになり、
   それは Cabal + `cabal.project` の constraints より面倒。

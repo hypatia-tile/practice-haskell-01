@@ -1,0 +1,11 @@
+# Cabal project を作らない構成なので、HLS に渡す GHC 引数をここで直接指定する。
+# これが無いと hie-bios は引数なしの暗黙 cradle にフォールバックし、
+# エディタ上の診断から -Wall 系の警告が丸ごと消える。
+# Makefile の GHCFLAGS と揃えること。
+cradle:
+  direct:
+    arguments:
+      - -Wall
+      - -Wcompat
+      - -Wincomplete-record-updates
+      - -Wredundant-constraints
