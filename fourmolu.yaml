@@ -1,0 +1,4 @@
+# fourmolu のデフォルトは indentation: 4 だが、エディタ側 (Neovim の shiftwidth) が 2 のため
+# 手で書いた箇所と fourmolu が整形した箇所でインデントが食い違っていた (issue #2)。
+# 2 に統一する。それ以外は fourmolu のデフォルトのまま。
+indentation: 2
