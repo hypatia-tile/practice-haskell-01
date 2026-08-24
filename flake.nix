@@ -25,6 +25,7 @@
               p.transformers
               p.vector
               p.bytestring
+              p.word8
               p.megaparsec
             ]))
             hpkgs.cabal-install
