@@ -27,6 +27,7 @@
               p.bytestring
               p.word8
               p.megaparsec
+              p.containers
             ]))
             hpkgs.cabal-install
             hpkgs.haskell-language-server
