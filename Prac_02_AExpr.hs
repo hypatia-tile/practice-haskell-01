@@ -24,7 +24,11 @@ data Op = Add | Sub | Mul | Div
 data Cursor = Cursor {pos :: !Int}
   deriving (Show)
 
-type ParseError = [String]
+data Label
+  = RParen
+
+data ParseError
+  = Unexpected {unexpected :: Int, expected :: Label}
 
 newtype Parser a = P {runParser :: ByteString -> Cursor -> Either ParseError (a, Cursor)}
 
