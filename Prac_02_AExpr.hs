@@ -10,6 +10,8 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Functor (($>))
 import Data.Word8
+import Data.Set (Set)
+import Data.Set qualified as Set
 import TestKit (runCases, runTests)
 
 data Expr
@@ -25,10 +27,21 @@ data Cursor = Cursor {pos :: !Int}
   deriving (Show)
 
 data Label
-  = RParen
+  = LParen
+  | RParen
+  | Number
+
+instance Show Label where
+  show l = case l of
+    LParen -> sym "("
+    RParen -> sym ")"
+    Number -> term "number"
+    where 
+      sym = ("'" <>) . (<> "'")
+      term = ("<" <>) . (<> ">")
 
 data ParseError
-  = Unexpected {unexpected :: Int, expected :: Label}
+  = Unexpected {unexpected :: Int, expected :: Set Label}
 
 newtype Parser a = P {runParser :: ByteString -> Cursor -> Either ParseError (a, Cursor)}
 
