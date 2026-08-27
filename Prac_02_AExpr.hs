@@ -29,16 +29,25 @@ data Cursor = Cursor {pos :: !Int}
 data Label
   = LParen
   | RParen
+  | Minus
+  | Plus
+  | Star
+  | Slash
   | Number
+  deriving (Eq, Show, Ord)
 
-instance Show Label where
-  show l = case l of
-    LParen -> sym "("
-    RParen -> sym ")"
-    Number -> term "number"
-    where 
-      sym = ("'" <>) . (<> "'")
-      term = ("<" <>) . (<> ">")
+renderLabel :: Label -> String
+renderLabel l = case l of
+  LParen -> sym "("
+  RParen -> sym ")"
+  Minus -> sym "-"
+  Plus -> sym "+"
+  Star -> sym "*"
+  Slash -> sym "/"
+  Number -> term "number"
+  where 
+    sym = ("'" <>) . (<> "'")
+    term = ("<" <>) . (<> ">")
 
 data ParseError
   = Unexpected {unexpected :: Int, expected :: Set Label}
@@ -59,3 +68,15 @@ instance Monad Parser where
   (P p) >>= f = P \src cur -> do
     (p', cur') <- p src cur
     runParser (f p') src cur'
+
+instance Alternative Parser where
+  empty = P \_ cur -> Left $ Unexpected (pos cur) Set.empty
+  (P p) <|> (P q) = P \src cur -> case p src cur of
+    Right a -> Right a
+    Left (Unexpected pos1 want1) -> case q src cur of
+      Right b -> Right b
+      Left (Unexpected pos2 want2) -> Left $
+        case compare pos1 pos2 of
+          LT -> Unexpected pos2 want2
+          EQ -> Unexpected pos1 (want1 <> want2)
+          GT -> Unexpected pos1 want1
