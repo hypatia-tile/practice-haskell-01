@@ -26,27 +26,23 @@ data Op = Add | Sub | Mul | Div
 data Cursor = Cursor {pos :: !Int}
   deriving (Show)
 
-data Label
-  = LParen
-  | RParen
-  | Minus
-  | Plus
-  | Star
-  | Slash
-  | Number
-  | EndOfInput
+data TokenLabel = LParen | RParen | Minus | Plus | Star | Slash | Number | Space -- only labels with predicates
+  deriving (Eq, Show, Ord)
+data Label = Tok TokenLabel | EndOfInput | Named String -- what errors carry; free to grow
   deriving (Eq, Show, Ord)
 
 renderLabel :: Label -> String
 renderLabel l = case l of
-  LParen -> sym "("
-  RParen -> sym ")"
-  Minus -> sym "-"
-  Plus -> sym "+"
-  Star -> sym "*"
-  Slash -> sym "/"
-  Number -> term "number"
+  Tok LParen -> sym "("
+  Tok RParen -> sym ")"
+  Tok Minus -> sym "-"
+  Tok Plus -> sym "+"
+  Tok Star -> sym "*"
+  Tok Slash -> sym "/"
+  Tok Space -> term "space"
+  Tok Number -> term "number"
   EndOfInput -> term "end of input"
+  Named s -> sym s
  where
   sym = ("'" <>) . (<> "'")
   term = ("<" <>) . (<> ">")
@@ -84,7 +80,7 @@ instance Alternative Parser where
           EQ -> Unexpected pos1 (want1 <> want2)
           GT -> lhs
 
-satisfy :: Label -> Parser Word8
+satisfy :: TokenLabel -> Parser Word8
 satisfy label = P \src cur ->
   case label of
     LParen -> go (== _parenleft) src cur
@@ -93,14 +89,17 @@ satisfy label = P \src cur ->
     Plus -> go (== _plus) src cur
     Star -> go (== _asterisk) src cur
     Slash -> go (== _slash) src cur
-    Number -> go (isDigit) src cur
-    EndOfInput -> case src BS.!? pos cur of
-      Nothing -> Right $ (_nul, cur) 
-      Just _ -> Left $ Unexpected (pos cur) (Set.singleton label)
-  where
-    go cond src cur = case src BS.!? pos cur of
-        Nothing -> Left $ Unexpected (pos cur) (Set.singleton label)
-        Just b -> if cond b
-          then Right $ (b, cur{pos = pos cur + 1})
-          else Left $ Unexpected (pos cur) (Set.singleton label)
+    Number -> go isDigit src cur
+    Space -> go isSpace src cur
+ where
+  go cond src cur = case src BS.!? pos cur of
+    Nothing -> Left $ Unexpected (pos cur) (Set.singleton (Tok label))
+    Just b ->
+      if cond b
+        then Right $ (b, cur{pos = pos cur + 1})
+        else Left $ Unexpected (pos cur) (Set.singleton (Tok label))
+eof :: Parser ()
+eof = P \src cur -> case src BS.!? pos cur of
+  Nothing -> pure ((), cur)
+  Just _ -> Left $ Unexpected (pos cur) (Set.singleton EndOfInput)
 
