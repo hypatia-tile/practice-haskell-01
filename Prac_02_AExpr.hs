@@ -42,7 +42,7 @@ renderLabel l = case l of
   Tok Space -> term "space"
   Tok Number -> term "number"
   EndOfInput -> term "end of input"
-  Named s -> sym s
+  Named s -> term s
  where
   sym = ("'" <>) . (<> "'")
   term = ("<" <>) . (<> ">")
@@ -98,8 +98,8 @@ satisfy label = P \src cur ->
       if cond b
         then Right $ (b, cur{pos = pos cur + 1})
         else Left $ Unexpected (pos cur) (Set.singleton (Tok label))
+
 eof :: Parser ()
 eof = P \src cur -> case src BS.!? pos cur of
   Nothing -> pure ((), cur)
   Just _ -> Left $ Unexpected (pos cur) (Set.singleton EndOfInput)
-
