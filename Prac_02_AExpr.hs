@@ -9,9 +9,9 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Functor (($>))
-import Data.Word8
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Word8
 import TestKit (runCases, runTests)
 
 data Expr
@@ -45,12 +45,13 @@ renderLabel l = case l of
   Star -> sym "*"
   Slash -> sym "/"
   Number -> term "number"
-  where 
-    sym = ("'" <>) . (<> "'")
-    term = ("<" <>) . (<> ">")
+ where
+  sym = ("'" <>) . (<> "'")
+  term = ("<" <>) . (<> ">")
 
 data ParseError
-  = Unexpected {unexpected :: Int, expected :: Set Label}
+  = Unexpected {errPos :: Int, expected :: Set Label}
+  deriving (Eq, Show)
 
 newtype Parser a = P {runParser :: ByteString -> Cursor -> Either ParseError (a, Cursor)}
 
@@ -73,10 +74,10 @@ instance Alternative Parser where
   empty = P \_ cur -> Left $ Unexpected (pos cur) Set.empty
   (P p) <|> (P q) = P \src cur -> case p src cur of
     Right a -> Right a
-    Left (Unexpected pos1 want1) -> case q src cur of
+    Left lhs@(Unexpected pos1 want1) -> case q src cur of
       Right b -> Right b
-      Left (Unexpected pos2 want2) -> Left $
+      Left rhs@(Unexpected pos2 want2) -> Left $
         case compare pos1 pos2 of
-          LT -> Unexpected pos2 want2
+          LT -> rhs
           EQ -> Unexpected pos1 (want1 <> want2)
-          GT -> Unexpected pos1 want1
+          GT -> lhs
