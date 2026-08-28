@@ -34,6 +34,7 @@ data Label
   | Star
   | Slash
   | Number
+  | EndOfInput
   deriving (Eq, Show, Ord)
 
 renderLabel :: Label -> String
@@ -45,6 +46,7 @@ renderLabel l = case l of
   Star -> sym "*"
   Slash -> sym "/"
   Number -> term "number"
+  EndOfInput -> term "end of input"
  where
   sym = ("'" <>) . (<> "'")
   term = ("<" <>) . (<> ">")
@@ -81,3 +83,24 @@ instance Alternative Parser where
           LT -> rhs
           EQ -> Unexpected pos1 (want1 <> want2)
           GT -> lhs
+
+satisfy :: Label -> Parser Word8
+satisfy label = P \src cur ->
+  case label of
+    LParen -> go (== _parenleft) src cur
+    RParen -> go (== _parenright) src cur
+    Minus -> go (== _hyphen) src cur
+    Plus -> go (== _plus) src cur
+    Star -> go (== _asterisk) src cur
+    Slash -> go (== _slash) src cur
+    Number -> go (isDigit) src cur
+    EndOfInput -> case src BS.!? pos cur of
+      Nothing -> Right $ (_nul, cur) 
+      Just _ -> Left $ Unexpected (pos cur) (Set.singleton label)
+  where
+    go cond src cur = case src BS.!? pos cur of
+        Nothing -> Left $ Unexpected (pos cur) (Set.singleton label)
+        Just b -> if cond b
+          then Right $ (b, cur{pos = pos cur + 1})
+          else Left $ Unexpected (pos cur) (Set.singleton label)
+
