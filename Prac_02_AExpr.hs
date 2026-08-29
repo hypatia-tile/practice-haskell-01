@@ -80,24 +80,26 @@ instance Alternative Parser where
           EQ -> Unexpected pos1 (want1 <> want2)
           GT -> lhs
 
+core :: Set Label -> (Word8 -> Bool) -> Parser Word8
+core labels cond = P \src cur -> case src BS.!? pos cur of
+  Nothing -> Left $ Unexpected (pos cur) labels
+  Just b ->
+    if cond b
+      then Right $ (b, cur{pos = pos cur + 1})
+      else Left $ Unexpected (pos cur) labels
+
 satisfy :: TokenLabel -> Parser Word8
-satisfy label = P \src cur ->
-  case label of
-    LParen -> go (== _parenleft) src cur
-    RParen -> go (== _parenright) src cur
-    Minus -> go (== _hyphen) src cur
-    Plus -> go (== _plus) src cur
-    Star -> go (== _asterisk) src cur
-    Slash -> go (== _slash) src cur
-    Number -> go isDigit src cur
-    Space -> go isSpace src cur
- where
-  go cond src cur = case src BS.!? pos cur of
-    Nothing -> Left $ Unexpected (pos cur) (Set.singleton (Tok label))
-    Just b ->
-      if cond b
-        then Right $ (b, cur{pos = pos cur + 1})
-        else Left $ Unexpected (pos cur) (Set.singleton (Tok label))
+satisfy label =
+  let toks = Set.singleton (Tok label)
+   in case label of
+        LParen -> core toks (== _parenleft)
+        RParen -> core toks (== _parenright)
+        Minus -> core toks (== _hyphen)
+        Plus -> core toks (== _plus)
+        Star -> core toks (== _asterisk)
+        Slash -> core toks (== _slash)
+        Number -> core toks isDigit
+        Space -> core toks isSpace
 
 eof :: Parser ()
 eof = P \src cur -> case src BS.!? pos cur of
