@@ -81,12 +81,11 @@ instance Alternative Parser where
           GT -> lhs
 
 core :: Set Label -> (Word8 -> Bool) -> Parser Word8
-core labels cond = P \src cur -> case src BS.!? pos cur of
-  Nothing -> Left $ Unexpected (pos cur) labels
-  Just b ->
-    if cond b
-      then Right $ (b, cur{pos = pos cur + 1})
-      else Left $ Unexpected (pos cur) labels
+core labels cond = P \src cur ->
+  let basePos = pos cur
+   in case src BS.!? basePos of
+        Just b | cond b -> Right (b, cur{pos = basePos + 1})
+        _ -> Left $ Unexpected basePos labels
 
 satisfy :: TokenLabel -> Parser Word8
 satisfy label =
@@ -100,6 +99,9 @@ satisfy label =
         Slash -> core toks (== _slash)
         Number -> core toks isDigit
         Space -> core toks isSpace
+
+space :: Parser Word8
+space = core Set.empty isSpace
 
 eof :: Parser ()
 eof = P \src cur -> case src BS.!? pos cur of
