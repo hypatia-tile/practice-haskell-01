@@ -26,7 +26,7 @@ data Op = Add | Sub | Mul | Div
 data Cursor = Cursor {pos :: !Int}
   deriving (Show)
 
-data TokenLabel = LParen | RParen | Minus | Plus | Star | Slash | Number | Space -- only labels with predicates
+data TokenLabel = LParen | RParen | Minus | Plus | Star | Slash | Number -- only labels with predicates
   deriving (Eq, Show, Ord)
 data Label = Tok TokenLabel | EndOfInput | Named String -- what errors carry; free to grow
   deriving (Eq, Show, Ord)
@@ -39,7 +39,6 @@ renderLabel l = case l of
   Tok Plus -> sym "+"
   Tok Star -> sym "*"
   Tok Slash -> sym "/"
-  Tok Space -> term "space"
   Tok Number -> term "number"
   EndOfInput -> term "end of input"
   Named s -> term s
@@ -82,10 +81,10 @@ instance Alternative Parser where
 
 core :: Set Label -> (Word8 -> Bool) -> Parser Word8
 core labels cond = P \src cur ->
-  let basePos = pos cur
-   in case src BS.!? basePos of
-        Just b | cond b -> Right (b, cur{pos = basePos + 1})
-        _ -> Left $ Unexpected basePos labels
+  let off = pos cur
+   in case src BS.!? off of
+        Just b | cond b -> Right (b, cur{pos = off + 1})
+        _ -> Left $ Unexpected off labels
 
 satisfy :: TokenLabel -> Parser Word8
 satisfy label =
@@ -98,8 +97,12 @@ satisfy label =
         Star -> core toks (== _asterisk)
         Slash -> core toks (== _slash)
         Number -> core toks isDigit
-        Space -> core toks isSpace
 
+{- | 空白1文字。ラベルを持たないので expecting に現れない。
+  空白は文法上の「意味のある単位」ではなく、あるかないかを利用者に
+  問うても情報にならないため。
+  失敗メッセージが空になるので、@many@ / @optional@ の下でのみ使うこと。
+-}
 space :: Parser Word8
 space = core Set.empty isSpace
 
