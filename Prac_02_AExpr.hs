@@ -4,7 +4,7 @@
 
 module Prac_02_AExpr where
 
-import Control.Applicative (Alternative (empty, (<|>)))
+import Control.Applicative (Alternative (empty, (<|>), many))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -110,3 +110,9 @@ eof :: Parser ()
 eof = P \src cur -> case src BS.!? pos cur of
   Nothing -> pure ((), cur)
   Just _ -> Left $ Unexpected (pos cur) (Set.singleton EndOfInput)
+
+lexeme :: Parser a -> Parser a
+lexeme p = p <* many space
+
+symbol :: TokenLabel -> Parser Word8
+symbol tok = lexeme (satisfy tok)
