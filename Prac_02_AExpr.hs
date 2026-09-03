@@ -4,7 +4,7 @@
 
 module Prac_02_AExpr where
 
-import Control.Applicative (Alternative (empty, many, (<|>)))
+import Control.Applicative (Alternative (empty, many, (<|>)), optional)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -167,15 +167,49 @@ lexeme p = p <* many space
 symbol :: TokenLabel -> Parser ()
 symbol = lexeme . token
 
--- | 左結合の演算子を扱う
+{- | @p@ を中置演算子 @opp@ で1個以上繋げ、__左結合__で畳む。
+
+左結合の文法は本来 @expr = expr op term@ と書きたいが、再帰下降では
+書けない。先頭で自分を呼ぶので1バイトも読まずに再帰し、止まらないため。
+そこで「1つ読んでから @(演算子, 項)@ の並びを繰り返し読み、左から畳む」に
+書き換える。それを部品にしたのがこれ。
+
+演算子側が @Parser Op@ ではなく @Parser (a -> a -> a)@ なのは、
+畳み方そのものを呼び出し側に持たせるため。おかげでこの関数は AST を知らない。
+
+> term = chainl1 factor (symbol Star $> Bin Mul <|> symbol Slash $> Bin Div)
+
+== 演算子を消費したら後戻りしない
+
+@optional opp@ が @Just@ を返した後は、@lp@ の失敗を拾う @\<|\>@ が無い。
+つまり__演算子を読んだ時点でこの連鎖に踏み込むことが確定する__。
+このパーサー唯一のコミット点で、megaparsec の
+「入力を消費したらバックトラックしない」を局所的に真似たもの。
+
+失敗を @\<|\>@ で丸ごと包むと、@"1 + "@ で右辺が pos 4 まで進んで失敗した事実が
+捨てられ、カーソルが pos 2 に戻る。__何も間違っていない位置__を指すエラーになる。
+コミット点を置くとこれが直る:
+
+> "1 + "  →  pos 4: expecting '(', '-', <number>   (包むと pos 2: expecting <end of input>)
+
+この文法では成否も AST も変わらない。演算子の後には必ず項が来るので、
+後戻りして成功する道が元々無いため (長さ5までの総当たりで確認済み)。
+
+== まだ直っていないこと
+
+@opp@ 自体が失敗したときは @Nothing@ が期待値集合を捨てるので、
+@"1 2"@ は @expecting \<end of input\>@ になる。本来は演算子も並ぶべき。
+位置は正しいので、これは hints (成功しても期待値だけ持ち越す) の課題。
+-}
 chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
-chainl1 p = (p >>=) . restp p
+chainl1 p infixlp = p >>= restp p infixlp
  where
+  -- lp と opp を引数で受け取るのは、外側の a を捕捉しないため。
+  -- 捕捉すると restp は多相でなくなり、暗黙の forall b. が嘘になる。
   restp :: Parser b -> Parser (b -> b -> b) -> b -> Parser b
   restp lp opp lhs =
-    ( do
-        op <- opp
+    optional opp >>= \case
+      Nothing -> pure lhs
+      Just op -> do
         rhs <- lp
         restp lp opp (op lhs rhs)
-    )
-      <|> pure lhs
