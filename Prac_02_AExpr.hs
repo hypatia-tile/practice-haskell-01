@@ -166,3 +166,16 @@ lexeme p = p <* many space
 -- | 約物のレキシム。文法が空白に触れずに済むよう、これを使う。
 symbol :: TokenLabel -> Parser ()
 symbol = lexeme . token
+
+-- | 左結合の演算子を扱う
+chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+chainl1 p = (p >>=) . restp p
+ where
+  restp :: Parser b -> Parser (b -> b -> b) -> b -> Parser b
+  restp lp opp lhs =
+    ( do
+        op <- opp
+        rhs <- lp
+        restp lp opp (op lhs rhs)
+    )
+      <|> pure lhs
