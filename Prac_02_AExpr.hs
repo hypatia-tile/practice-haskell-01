@@ -292,3 +292,133 @@ eval e = case e of
       Sub -> pure (a - b)
       Mul -> pure (a * b)
       Div -> if b == 0 then Left DivByZero else pure (a `quot` b)
+
+-- テスト ----------------------------------------------------------------
+
+{- | 構文木を完全に括弧付きの式に書き戻す。'reparse' の不変条件のためだけに使う。
+
+全ての 'Bin' と 'Neg' を括弧で包むので、優先順位も結合も文字列の形で確定する。
+つまり読み直した木は__元の木と一致するはず__で、一致しなければ
+パーサーの優先順位か結合が木の形とずれている。
+
+@Lit@ が非負である前提で書いている。負数は 'Neg' として木に現れるので、
+パーサーが作る木に限れば成り立つ。
+-}
+render :: Expr -> ByteString
+render e = case e of
+  Lit n -> BC.pack (show n)
+  Neg x -> "(-" <> render x <> ")"
+  Bin op lhs rhs -> "(" <> render lhs <> opText op <> render rhs <> ")"
+ where
+  opText op = case op of
+    Add -> "+"
+    Sub -> "-"
+    Mul -> "*"
+    Div -> "/"
+
+{- | 読んで、書き戻して、もう一度読む。結果は最初に読んだ木と等しいはず。
+
+表と違い__入力を足せばタダで効く__不変条件 (docs/adr/0002)。
+パースに失敗する入力でも 'Left' がそのまま伝播するので、
+エラーの表にも同じようにかけられる。
+-}
+reparse :: ByteString -> Either ParseError Expr
+reparse src = parseExpr src >>= parseExpr . render
+
+{- | 'Label' の表示順が宣言順になること。
+
+'Ord' を導出しているので構成子の宣言順が 'Set.toList' の昇順になり、
+それがそのまま expecting の並びになる。構成子を並べ替えると表示順が変わる、
+という繋がりは型にもコードにも書けないので、ここで固定する。
+-}
+labelOrder :: [Label] -> [String]
+labelOrder = map renderLabel . Set.toList . Set.fromList
+
+-- | パースが成功する入力と、その構文木。
+parseCases :: [(ByteString, Either ParseError Expr)]
+parseCases =
+  [ ("1", ok (Lit 1))
+  , ("42", ok (Lit 42))
+  , ("007", ok (Lit 7))
+  , ("   42   ", ok (Lit 42))
+  , ("1+2", ok (Bin Add (Lit 1) (Lit 2)))
+  , -- 左結合。右結合なら Bin Sub (Lit 1) (Bin Sub (Lit 2) (Lit 3))
+    ("1-2-3", ok (Bin Sub (Bin Sub (Lit 1) (Lit 2)) (Lit 3)))
+  , ("8/4/2", ok (Bin Div (Bin Div (Lit 8) (Lit 4)) (Lit 2)))
+  , -- 優先順位。* が + より強い
+    ("1+2*3", ok (Bin Add (Lit 1) (Bin Mul (Lit 2) (Lit 3))))
+  , ("(1+2)*3", ok (Bin Mul (Bin Add (Lit 1) (Lit 2)) (Lit 3)))
+  , ("2*(3+4)-5", ok (Bin Sub (Bin Mul (Lit 2) (Bin Add (Lit 3) (Lit 4))) (Lit 5)))
+  , -- 単項マイナスは factor にあるので最も強く結合する
+    ("-1*2", ok (Bin Mul (Neg (Lit 1)) (Lit 2)))
+  , -- factor に再帰するので多重否定も通る
+    ("--3", ok (Neg (Neg (Lit 3))))
+  , (" 1 - -2 ", ok (Bin Sub (Lit 1) (Neg (Lit 2))))
+  ]
+ where
+  ok = Right
+
+-- | パースが失敗する入力と、その位置・期待集合。
+errorCases :: [(ByteString, Either ParseError Expr)]
+errorCases =
+  [ ("", errAt 0 [Tok LParen, Tok Minus, Number])
+  , -- chainl1 のコミット点。演算子を消費した先の pos 4 を指す
+    ("1 + ", errAt 4 [Tok LParen, Tok Minus, Number])
+  , ("1 + *", errAt 4 [Tok LParen, Tok Minus, Number])
+  , ("(1+2", errAt 4 [Tok RParen])
+  , -- eof を要求しているので部分一致では成功しない。
+    -- 理想は演算子も並ぶこと (expecting '+' '-' '*' '/' <end of input>) だが、
+    -- optional が期待値を捨てるので今は <end of input> だけ。hints の課題 (#14)
+    ("1 2", errAt 2 [EndOfInput])
+  , ("1)", errAt 1 [EndOfInput])
+  ]
+ where
+  errAt p ls = Left (Unexpected p (Set.fromList ls))
+
+{- | 入口から評価まで。
+
+'ParseError' と 'EvalError' を束ねる型を作っていないので入れ子になる。
+束ねなかった判断がそのまま型に出ている箇所。
+-}
+evalOf :: ByteString -> Either ParseError (Either EvalError Integer)
+evalOf = fmap eval . parseExpr
+
+-- | 評価の期待値。
+evalCases :: [(ByteString, Either ParseError (Either EvalError Integer))]
+evalCases =
+  [ ("1+2", val 3)
+  , ("1-2-3", val (-4))
+  , ("8/4/2", val 1)
+  , ("1+2*3", val 7)
+  , ("(1+2)*3", val 9)
+  , ("2*(3+4)-5", val 9)
+  , ("--3", val 3)
+  , ("7/2", val 3)
+  , -- quot (0方向) を選んだことを固定する。div なら -4 になる
+    ("-7/2", val (-3))
+  , ("(0-7)/2", val (-3))
+  , ("7/(0-2)", val (-3))
+  , ("1/0", Right (Left DivByZero))
+  , ("1/(2-2)", Right (Left DivByZero))
+  , ("1+1/0", Right (Left DivByZero))
+  , ("(1/0)*0", Right (Left DivByZero))
+  ]
+ where
+  val = Right . Right
+
+main :: IO ()
+main =
+  runTests
+    [ runCases "parseExpr" parseExpr parseCases
+    , runCases "parseExpr (失敗)" parseExpr errorCases
+    , runCases "evalOf" evalOf evalCases
+    , runCases "reparse (不変条件)" reparse [(src, parseExpr src) | (src, _) <- parseCases <> errorCases]
+    , runCases
+        "labelOrder"
+        labelOrder
+        [
+          ( [Named "expr", EndOfInput, Number, Tok Slash, Tok Star, Tok Plus, Tok Minus, Tok RParen, Tok LParen]
+          , ["'('", "')'", "'-'", "'+'", "'*'", "'/'", "<number>", "<end of input>", "<expr>"]
+          )
+        ]
+    ]
