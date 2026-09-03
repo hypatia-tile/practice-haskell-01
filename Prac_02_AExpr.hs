@@ -245,3 +245,50 @@ expr =
     ( symbol Plus $> Bin Add
         <|> symbol Minus $> Bin Sub
     )
+
+{- | 入力全体を式として読む。文法を使う唯一の入口。
+
+ここが2つの責任を果たす。
+
+* __先頭の空白を落とす__。'lexeme' は空白をトークンの後ろでしか消費しないので、
+  入力の先頭だけは誰の担当でもない。ここで一度だけ @many space@ する。
+* __'eof' を要求する__。付けないと @\"1 2\"@ が @Lit 1@ として成功し、
+  残りを黙って捨てる。部分一致を成功と呼ばないための歯止め。
+
+'Cursor' の初期値を作るのもここだけ。他の関数は受け取った位置から進むだけで、
+0 から始まることを知らない。
+-}
+parseExpr :: ByteString -> Either ParseError Expr
+parseExpr src = fst <$> runParser (many space *> expr <* eof) src (Cursor 0)
+
+-- | 評価が失敗する理由。今はゼロ除算だけだが、増えたら構成子を足す。
+data EvalError = DivByZero
+  deriving (Eq, Show)
+
+{- | 構文木を評価する。ゼロ除算は 'Left' で返す。
+
+例外ではなく 'Either' にしたのは、__失敗が型に現れる__ようにするため。
+@Integer@ を返す関数は「必ず値が出る」と読めてしまい、呼び出し側が
+ゼロ除算を考えなくてよいと誤解する余地がある。
+
+除算は 'quot' (0 方向に切り捨て)。'div' は負の無限大方向に丸めるので
+@(-7) \`div\` 2 == -4@、@(-7) \`quot\` 2 == -3@ と結果が変わる。
+多くの言語の @\/@ は後者なので合わせた。整数除算しか無い文法なので、
+どちらを選んだかは haddock でしか分からない。ここが唯一の記録。
+
+'Bin' の左右は 'Either' の @do@ で順に評価するので、__左側の失敗が優先__される。
+@1\/0 + 2\/0@ はどちらも 'DivByZero' なので差は見えないが、
+理由を持つエラーが増えたときに効いてくる。
+-}
+eval :: Expr -> Either EvalError Integer
+eval e = case e of
+  Lit n -> pure n
+  Neg x -> negate <$> eval x
+  Bin op lhs rhs -> do
+    a <- eval lhs
+    b <- eval rhs
+    case op of
+      Add -> pure (a + b)
+      Sub -> pure (a - b)
+      Mul -> pure (a * b)
+      Div -> if b == 0 then Left DivByZero else pure (a `quot` b)
