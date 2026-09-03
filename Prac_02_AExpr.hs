@@ -50,12 +50,12 @@ renderLabel l = case l of
   Tok Plus -> sym "+"
   Tok Star -> sym "*"
   Tok Slash -> sym "/"
-  Number -> term "number"
-  EndOfInput -> term "end of input"
-  Named s -> term s
+  Number -> angle "number"
+  EndOfInput -> angle "end of input"
+  Named s -> angle s
  where
   sym = ("'" <>) . (<> "'")
-  term = ("<" <>) . (<> ">")
+  angle = ("<" <>) . (<> ">")
 
 data ParseError
   = Unexpected {errPos :: Int, expected :: Set Label}
@@ -215,19 +215,33 @@ chainl1 p infixlp = p >>= restp p infixlp
         restp lp opp (op lhs rhs)
 
 number :: Parser Expr
-number = lexeme (Lit <$> (fromIntegral <$> digit >>= go))
+number = lexeme (Lit <$> (toDigit <$> digit >>= go))
  where
+  toDigit b = fromIntegral (b - _0)
   go :: Integer -> Parser Integer
-  go d = do
+  go acc =
     optional digit >>= \case
-      Nothing -> pure d
-      Just next -> go (10 * d + fromIntegral (next - _0))
+      Nothing -> pure acc
+      Just next -> go (10 * acc + toDigit next)
 
 factor :: Parser Expr
-factor = number <|> (symbol LParen *> expr <* symbol RParen) <|> (Neg <$> (symbol Minus *> factor))
+factor =
+  number
+    <|> (symbol LParen *> expr <* symbol RParen)
+    <|> (Neg <$> (symbol Minus *> factor))
 
 term :: Parser Expr
-term = chainl1 factor (symbol Star $> Bin Mul <|> symbol Slash $> Bin Div)
+term =
+  chainl1
+    factor
+    ( symbol Star $> Bin Mul
+        <|> symbol Slash $> Bin Div
+    )
 
 expr :: Parser Expr
-expr = chainl1 term (symbol Plus $> Bin Add <|> symbol Minus $> Bin Sub)
+expr =
+  chainl1
+    term
+    ( symbol Plus $> Bin Add
+        <|> symbol Minus $> Bin Sub
+    )
