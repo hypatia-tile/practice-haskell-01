@@ -213,3 +213,21 @@ chainl1 p infixlp = p >>= restp p infixlp
       Just op -> do
         rhs <- lp
         restp lp opp (op lhs rhs)
+
+number :: Parser Expr
+number = lexeme (Lit <$> (fromIntegral <$> digit >>= go))
+ where
+  go :: Integer -> Parser Integer
+  go d = do
+    optional digit >>= \case
+      Nothing -> pure d
+      Just next -> go (10 * d + fromIntegral (next - _0))
+
+factor :: Parser Expr
+factor = number <|> (symbol LParen *> expr <* symbol RParen) <|> (Neg <$> (symbol Minus *> factor))
+
+term :: Parser Expr
+term = chainl1 factor (symbol Star $> Bin Mul <|> symbol Slash $> Bin Div)
+
+expr :: Parser Expr
+expr = chainl1 term (symbol Plus $> Bin Add <|> symbol Minus $> Bin Sub)
